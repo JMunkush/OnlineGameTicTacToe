@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TicTacToe Game</title>
+    <style>
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            background-image: url('https://fonoteka.top/uploads/posts/2022-01/1643301445_1-phonoteka-org-p-krestiki-noliki-fon-1.jpg');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            background-color: rgba(0, 0, 0, 0.5);
+            font-family: 'Arial', sans-serif;
+            color: #fff;
+        }
+
+        #main-menu {
+            text-align: center;
+        }
+        #loading-text {
+            display: none;
+            font-size: 20px;
+            margin-top: 20px;
+        }
+
+        #game-board {
+            margin-top: 20px;
+            display: grid;
+            grid-template-columns: repeat(3, 100px);
+            gap: 10px;
+            text-align: center;
+        }
+        .cell {
+            width: 100px;
+            height: 100px;
+            background-color: rgba(255, 255, 255, 0.3);
+            border: 2px solid #fff;
+            font-size: 24px;
+            line-height: 100px;
+        }
+        #start-button {
+            padding: 10px 20px;
+            font-size: 18px;
+            background-color: #4caf50;
+            color: #fff;
+            border: none;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+
+        #start-button:hover {
+            background-color: #45a049;
+        }
+        #versus-name {
+            position: fixed;
+            top: 0;
+            left: 20px;
+            margin: 20px;
+        }
+        #queue {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        @keyframes bounce {
+            0%, 100% {
+                transform: translateY(0);
+            }
+            50% {
+                transform: translateY(-10px);
+            }
+        }
+
+        .bouncing-element {
+            animation: bounce 1s infinite;
+        }
+        .start-button {
+            padding: 10px 20px;
+            font-size: 18px;
+            background-color: #4caf50;
+            color: #fff;
+            border: none;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+
+        .start-button:hover {
+            background-color: #45a049;
+        }
+
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.5.2/sockjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+</head>
+<body>
+<div id="versus-name"></div>
+
+<div id="main-menu">
+    <h1>TicTacToe Game</h1>
+    <button id="start-button" onclick="startGame()">Начать</button>
+</div>
+
+<div id="queue">
+</div>
+
+
+<div id="loading-text">
+    <h2>Ищем игроков...</h2>
+</div>
+
+<script>
+    let socket = new SockJS('/tic_tac_toe');
+    let stompClient = Stomp.over(socket);
+    let roomEndpoint;
+    let step;
+    let isGameInited = false;
+    let isFirst;
+
+    stompClient.connect({}, function (frame) {
+        console.log('Connected: ' + frame);
+    });
+
+    function startGame() {
+        let nickname = prompt("Введите ваш никнейм:", "Гость");
+        if (nickname != null && nickname !== "") {
+            console.log(`player with nickname: ${nickname} connected`);
+
+            showLoadingText();
+            stompClient.send("/prefix/registration", {}, JSON.stringify({
+                'nickname': nickname,
+            }));
+
+            stompClient.subscribe(getEndpoint(nickname), function (playerData) {
+
+                playerData = JSON.parse(playerData.body);
+                isFirst = playerData.player.first;
+
+                stompClient.unsubscribe(getEndpoint(nickname));
+
+                stompClient.subscribe("/broker/room/" + playerData.roomId, function (stepDraw){
+                    let draw = JSON.parse(stepDraw.body);
+                    drawStep(draw);
+
+                    if(draw.winner != null){
+                        drawWinner(draw.winner);
+                    }
+                });
+
+                setDataToPage(playerData);
+
+                roomEndpoint = "/prefix/room/" + playerData.roomId;
+                step = new PlayerStep(playerData, -1);
+
+                if(!isGameInited) {
+                    createGameBoard();
+                    isGameInited = true;
+                }
+            });
+
+        } else {
+            alert("Вы не ввели имя. Приветствие отклонено.");
+        }
+    }
+
+    function drawWinner(winner) {
+        let container = document.createElement("div");
+
+        let backButton = document.createElement("button");
+        backButton.textContent = "Назад";
+        backButton.className = "start-button";
+        backButton.addEventListener("click", () => {
+            location.reload();
+        });
+
+        container.appendChild(backButton);
+
+        let newH1 = document.createElement("h1");
+        newH1.style.color = "yellow";
+        newH1.textContent = "Победитель: " + winner;
+
+        container.appendChild(newH1);
+
+        let queueElement = document.getElementById("queue");
+        queueElement.innerHTML = "";
+        queueElement.appendChild(container);
+    }
+
+    function drawStep(stepDraw){
+        console.log(stepDraw)
+        let element = document.getElementById(stepDraw.index);
+        if(stepDraw.x){
+            element.textContent = "X";
+        } else {
+            element.textContent = "O";
+        }
+        element.onclick = () => {};
+        element.style.fontSize = "4em";
+    }
+    function setDataToPage(playerData) {
+        let versusName = document.getElementById("versus-name");
+        if (versusName.querySelector("h1") == null) {
+            let versusNameElement = document.createElement("h1");
+            versusNameElement.style.color = 'red';
+            versusNameElement.textContent = "Противник: " + playerData.versusPlayerName;
+            versusName.appendChild(versusNameElement);
+        }
+
+        let queueText = document.getElementById("queue");
+        let el = queueText.querySelector("h2");
+        if (el == null) {
+            let queueElement = document.createElement("h2");
+            if (playerData.player.first) {
+                queueElement.textContent = "Твой Ход !";
+                queueElement.className = "bouncing-element";
+            } else {
+                queueElement.textContent = "Ждём ход противника..."
+            }
+            queueText.appendChild(queueElement);
+        } else {
+            if (playerData.player.first) {
+                el.innerHTML = "Твой Ход !"
+                el.className = "bouncing-element"
+            } else {
+                el.className = "";
+                el.innerHTML = "Ждём ход противника..."
+            }
+        }
+
+
+    }
+    function showLoadingText() {
+        let loadingText = document.getElementById("loading-text");
+        let mainMenu = document.getElementById("main-menu");
+        mainMenu.style.display = "none";
+        loadingText.style.display = "block";
+    }
+
+    function getEndpoint(nickname){
+        return `/broker/${nickname}/queue/private`;
+    }
+
+    function createGameBoard() {
+        let gameBoard = document.createElement("div");
+        gameBoard.id = "game-board";
+
+        for (let i = 0; i < 9; i++) {
+            let cell = document.createElement("div");
+            cell.style.cursor = "pointer";
+            cell.addEventListener("mouseover", () => {
+                cell.style.backgroundColor = "darkgreen";
+            });
+            cell.addEventListener("mouseout", () => {
+                cell.style.backgroundColor = "";
+            });
+            cell.id = i;
+            cell.className = "cell";
+            cell.setAttribute("onclick", "makeMove(this)");
+            gameBoard.appendChild(cell);
+        }
+
+
+
+        let previousElement = document.getElementById("loading-text");
+        previousElement.replaceWith(gameBoard);
+    }
+
+    function makeMove(cell) {
+        if(isFirst) {
+            step.stepIndex = cell.id;
+            stompClient.send(roomEndpoint, {}, JSON.stringify(step));
+        } else {
+
+        }
+    }
+    class PlayerStep {
+        constructor(playerData, stepIndex) {
+            this.playerData = playerData;
+            this.stepIndex = stepIndex;
+        }
+    }
+</script>
+
+</body>
+</html>
