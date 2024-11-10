@@ -16,8 +16,8 @@ public class MessageController {
 
 
 
-    List<Room> roomList = new ArrayList<>();
-    List<Player> players = Collections.synchronizedList(new ArrayList<>());
+    static List<Room> roomList = new ArrayList<>();
+    static List<Player> players = Collections.synchronizedList(new ArrayList<>());
     @MessageMapping("/registration")
     public Player registration(@Payload Player player){
         if(players.size() == 0){
